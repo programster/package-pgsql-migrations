@@ -22,9 +22,9 @@ class MigrationManager
      * Creates the Migration object in preparation for migration.
      * @param type $migrationFolderPath - the path to the folder containing all the migration scripts
      *                                this may be absolute or relative.
-     * @param type $connection - a Mysqli object connecting us to the database.
+     * @param resource $connection - the postgresql connection resource
      */
-    public function __construct(string $migrationFolderPath, \mysqli $connection)
+    public function __construct(string $migrationFolderPath, $connection)
     {
         if (!is_dir($migrationFolderPath))
         {
