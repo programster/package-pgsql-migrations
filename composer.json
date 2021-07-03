@@ -1,0 +1,25 @@
+{
+    "name": "programster/pgsql-migrations",
+    "type": "library",
+    "description": "A library for managing migrations for a PostgreSQL database.",
+    "keywords": ["pgsql", "postgresql", "migrations"],
+    "homepage": "https://github.com/programster/package-pgsql-migrations",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Stuart Page",
+            "email": "sdpagent@gmail.com",
+            "homepage": "https://blog.programster.org",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=7.4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Programster\\PgsqlObjects\\": "src/",
+            "Programster\\PgsqlObjects\\Exceptions\\": "src/exceptions"
+        }
+    }
+}
