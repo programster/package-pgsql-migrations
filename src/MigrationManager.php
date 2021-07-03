@@ -222,12 +222,14 @@ class MigrationManager
     {
         $escapedTableName = pg_escape_identifier(self::MIGRATIONS_TABLE);
 
+        // Postgresql does not have REPLACE, so just delete and insert in one transaction.
         $query =
-            "REPLACE INTO {$escapedTableName} " .
-            "SET " . pg_escape_identifier("id") . " = 1" .
-            ", " . pg_escape_identifier("version") . " = {$version}";
+            "DELETE FROM {$escapedTableName};" .
+            " INSERT INTO {$escapedTableName}" .
+            " (" . pg_escape_identifier("id") . ", " . pg_escape_identifier("version")  . ")" .
+            " VALUES (1, {$version})";
 
-        $result = $this->m_connection->query($query);
+        $result = pg_query($this->m_connection, $query);
 
         if ($result === false)
         {
@@ -247,12 +249,12 @@ class MigrationManager
         $showTablesQuery =
             "SELECT table_name FROM information_schema.tables" .
             " WHERE table_schema='public'" .
-            " AND table_type='BASE TABLE'" .
-            " AND table_name={$this->getEscapedMigrationTableName()}";
+            " AND table_type = 'BASE TABLE'" .
+            " AND table_name = " . pg_escape_literal($this->m_connection, self::MIGRATIONS_TABLE);
 
-        $result = $this->m_connection->query($showTablesQuery);
+        $result = pg_query($this->m_connection, $showTablesQuery);
 
-        if ($result->num_rows > 0)
+        if (pg_num_rows($result) > 0)
         {
             $selectMigrationsQuery = "SELECT * FROM {$this->getEscapedMigrationTableName()}";
             $result = pg_query($this->m_connection, $selectMigrationsQuery);
@@ -295,7 +297,7 @@ class MigrationManager
         $createTableQuery =
             "CREATE TABLE {$this->getEscapedMigrationTableName()} (
                 id INT NOT NULL,
-                version INT NOT NULL
+                version INT NOT NULL,
                 PRIMARY KEY (id)
             )";
 
