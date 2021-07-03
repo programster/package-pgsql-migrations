@@ -7,7 +7,7 @@
  * not yet exist, then it will be created and the database will be considered to be at version 0
  */
 
-namespace Programster\PgsqMigrations;
+namespace Programster\PgsqlMigrations;
 
 
 class MigrationManager

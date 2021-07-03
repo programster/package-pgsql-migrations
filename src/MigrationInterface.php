@@ -4,7 +4,7 @@
  * An interface for a migration script. Implement this when you are writing a migration.
  */
 
-namespace Programster\PgsqMigrations;
+namespace Programster\PgsqlMigrations;
 
 
 interface MigrationInterface

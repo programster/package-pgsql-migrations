@@ -18,8 +18,8 @@
     },
     "autoload": {
         "psr-4": {
-            "Programster\\PgsqlObjects\\": "src/",
-            "Programster\\PgsqlObjects\\Exceptions\\": "src/exceptions"
+            "Programster\\PgsqlMigrations\\": "src/",
+            "Programster\\PgsqlMigrations\\Exceptions\\": "src/exceptions"
         }
     }
 }
