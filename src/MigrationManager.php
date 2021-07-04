@@ -267,7 +267,7 @@ class MigrationManager
             }
             else
             {
-                $row = $result->fetch_assoc();
+                $row = pg_fetch_assoc($result);
 
                 if ($row == null || !isset($row['version']))
                 {
