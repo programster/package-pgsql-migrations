@@ -13,12 +13,12 @@ interface MigrationInterface
      * Method to apply updates.
      * @param resource $connectionResource - the pgsql connection to the database.
      */
-    public function up($connectionResource) : void;
+    public function up(\pgsql\Connection $connectionResource) : void;
 
 
     /**
      * Method to apply updates.
      * @param resource $connectionResource - the pgsql connection to the database.
      */
-    public function down($connectionResource) : void;
+    public function down(\pgsql\Connection $connectionResource) : void;
 }
