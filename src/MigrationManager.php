@@ -10,25 +10,29 @@
 namespace Programster\PgsqlMigrations;
 
 
+use Exception;
+use PgSql\Connection;
+
 class MigrationManager
 {
     const MIGRATIONS_TABLE = 'migrations';
 
-    private $m_connection; #  A connection resource to the PostgreSQL database.
-    private $m_migrationFolder; # The folder in which migration scripts are located.
+    private Connection $m_connection; #  A connection resource to the PostgreSQL database.
+    private string $m_migrationFolder; # The folder in which migration scripts are located.
 
 
     /**
      * Creates the Migration object in preparation for migration.
-     * @param type $migrationFolderPath - the path to the folder containing all the migration scripts
-     *                                this may be absolute or relative.
-     * @param resource $connection - the postgresql connection resource
+     * @param string $migrationFolderPath - the path to the folder containing all the migration scripts. This may be
+     * absolute or relative.
+     * @param Connection $connection - the postgresql connection resource
+     * @throws Exception
      */
-    public function __construct(string $migrationFolderPath, $connection)
+    public function __construct(string $migrationFolderPath, Connection $connection)
     {
         if (!is_dir($migrationFolderPath))
         {
-            throw new \Exception("A migration folder does not exist at: {$migrationFolderPath}");
+            throw new Exception("A migration folder does not exist at: {$migrationFolderPath}");
         }
 
         $this->m_migrationFolder = $migrationFolderPath;
@@ -37,18 +41,18 @@ class MigrationManager
 
 
     /**
-     * Migrates the database to the specified version. If the version is not specified (null) then
-     * this will automatically migrate the database to the furthest point which is determined by
-     * looking at the schemas.
+     * Migrates the database to the specified version. If the version is not specified (null) then this will
+     * automatically migrate the database to the furthest point which is determined by looking at the schemas.
      *
-     * @param $version - optional parameter to specify the version we wish to migrate to.
-     *                   if not set, then this will automatically migrate to the latest version
-     *                   which is discovered by looking at the files.
+     * @param $desiredVersion - optional parameter to specify the version we wish to migrate to. If not set, then this
+     * will automatically migrate to the latest version which is discovered by looking at the files.
+     *
      * @return void - updates database.
+     * @throws Exception
      */
-    public function migrate($desiredVersion = null)
+    public function migrate($desiredVersion = null) : void
     {
-        $databaseVersion = intval($this->getDbVersion());
+        $databaseVersion = $this->getDbVersion();
         $migrationFiles = $this->getMigrationFiles();
 
         if ($desiredVersion === null)
@@ -113,11 +117,10 @@ class MigrationManager
 
     /**
      * Fetches the migration files from the migrations folder.
-     * @param void
-     * @return Array<int,string> $keyedFiles - map of verstion/filepath to migration script
+     * @return array<int,string> $keyedFiles - map of version/filepath to migration script
      * @throws Exception if two files have same version or there is a gap in versions.
      */
-    private function getMigrationFiles()
+    private function getMigrationFiles() : array
     {
         // Find all the migration files in the directory and return the sorted.
         $files = scandir($this->m_migrationFolder);
@@ -128,11 +131,11 @@ class MigrationManager
         {
             if (!is_dir($this->m_migrationFolder . '/' . $filename))
             {
-                $fileVersion = self::getVileVersion($filename);
+                $fileVersion = self::getFileVersion($filename);
 
                 if (isset($keyedFiles[$fileVersion]))
                 {
-                    throw new \Exception('Migration error: two files have the same version!');
+                    throw new Exception('Migration error: two files have the same version!');
                 }
 
                 $keyedFiles[$fileVersion] = $this->m_migrationFolder . '/' . $filename;
@@ -141,7 +144,7 @@ class MigrationManager
 
         ksort($keyedFiles);
 
-        # Check that the migration files dont have gaps which could be the result of human error.
+        # Check that the migration files don't have gaps which could be the result of human error.
         $cachedVersion = null;
 
         $versions = array_keys($keyedFiles);
@@ -152,7 +155,7 @@ class MigrationManager
             {
                 if ($version != ($cachedVersion + 1))
                 {
-                    throw new \Exception('There is a gap in your migration file versions!');
+                    throw new Exception('There is a gap in your migration file versions!');
                 }
 
                 $cachedVersion = $version;
@@ -168,7 +171,8 @@ class MigrationManager
      * of the class within that file AFTER having included it.
      * Warning: This function works on the assumption that only one class is defined in the
      * migration script!
-     * @param filepath
+     * @param string $filepath - the path to the file
+     * @throws Exception
      */
     private function includeFileAndGetClassName(string $filepath)
     {
@@ -183,14 +187,14 @@ class MigrationManager
                       '. This could be caused by having duplicate class names, or having already ' .
                       'included the migration script.';
 
-            throw new \Exception($errMsg);
+            throw new Exception($errMsg);
         }
         elseif (count($newClasses) > 1)
         {
             $errMsg = 'Migration error: Found more than 1 class defined in the migration script ' .
                        '[' . $filepath . ']';
 
-            throw new \Exception('Migration error:');
+            throw new Exception($errMsg);
         }
 
         # newClasses array keeps its keys, so the first element is not at 0 at this point
@@ -201,15 +205,14 @@ class MigrationManager
 
 
     /**
-     * Function responsible for deciphering the 'version' from a filename. This is a function
-     * because we may wish to change it easily.
+     * Function responsible for deciphering the 'version' from a filename. This is a function because we may wish to
+     * change it easily.
      * @param string $filename - the name of the file (not full path) that is a migration class.
      * @return int $version - the version the file represents.
      */
-    private static function getVileVersion($filename)
+    private static function getFileVersion(string $filename) : int
     {
-        $version = intval($filename);
-        return $version;
+        return intval($filename);
     }
 
 
@@ -217,34 +220,34 @@ class MigrationManager
      * Inserts the specified version number into the database.
      * @param int $version - the new version of the database.
      * @return void.
+     * @throws Exception
      */
-    private function insertDbVersion(int $version)
+    private function insertDbVersion(int $version) : void
     {
-        $escapedTableName = pg_escape_identifier(self::MIGRATIONS_TABLE);
+        $escapedTableName = pg_escape_identifier($this->m_connection, self::MIGRATIONS_TABLE);
 
         // Postgresql does not have REPLACE, so just delete and insert in one transaction.
         $query =
             "DELETE FROM {$escapedTableName};" .
             " INSERT INTO {$escapedTableName}" .
-            " (" . pg_escape_identifier("id") . ", " . pg_escape_identifier("version")  . ")" .
+            " (" . pg_escape_identifier($this->m_connection, "id") . ", " . pg_escape_identifier($this->m_connection, "version")  . ")" .
             " VALUES (1, {$version})";
 
         $result = pg_query($this->m_connection, $query);
 
         if ($result === false)
         {
-            throw new \Exception("Migrations: error inserting version into the database");
+            throw new Exception("Migrations: error inserting version into the database");
         }
     }
 
 
     /**
      * Fetches the version of the database from the database.
-     * @param void
-     * @return int $version - the version in the dataase if it exists, -1 if it doesnt.
+     * @return int $version - the version in the database if it exists, -1 if it doesn't.
      * @throws Exception if migration table exists but failed to fetch version.
      */
-    private function getDbVersion()
+    private function getDbVersion() : int
     {
         $showTablesQuery =
             "SELECT table_name FROM information_schema.tables" .
@@ -271,10 +274,10 @@ class MigrationManager
 
                 if ($row == null || !isset($row['version']))
                 {
-                    throw new \Exception('Migrations: error reading database version from database');
+                    throw new Exception('Migrations: error reading database version from database');
                 }
 
-                $version = $row['version'];
+                $version = intval($row['version']);
             }
         }
         else
@@ -288,9 +291,9 @@ class MigrationManager
 
 
     /**
-     * Creates the migration table for if it doesnt exist yet to store the version within.
-     * @param void
+     * Creates the migration table for if it doesn't exist yet to store the version within.
      * @return void.
+     * @throws Exception
      */
     private function createMigrationTable() : void
     {
@@ -305,11 +308,14 @@ class MigrationManager
 
         if ($result === false)
         {
-            throw new \Exception("Migration manager failed to create the migrations table");
+            throw new Exception("Migration manager failed to create the migrations table");
         }
     }
 
 
-    private function getEscapedMigrationTableName() : string { return pg_escape_identifier(self::MIGRATIONS_TABLE); }
+    private function getEscapedMigrationTableName() : string
+    {
+        return pg_escape_identifier($this->m_connection, self::MIGRATIONS_TABLE);
+    }
 }
 
