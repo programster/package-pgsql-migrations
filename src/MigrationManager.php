@@ -3,8 +3,10 @@
 /**
  * This is a class to handle database migrations.
  *
- * This logic relies on a table called 'migrations' in the database for version info. If it does
- * not yet exist, then it will be created and the database will be considered to be at version 0
+ * This logic relies on a table (called 'migrations' by default) in the database for version info. If it does
+ * not yet exist, then it will be created and the database will be considered to be at version 0.
+ * A package that ships its own migrations gives its manager a table (and optionally a schema) of its own, so its
+ * version is kept separately from the application's.
  */
 
 namespace Programster\PgsqlMigrations;
@@ -17,26 +19,55 @@ class MigrationManager
 {
     const MIGRATIONS_TABLE = 'migrations';
 
+    // PostgreSQL's longest identifier, in bytes (NAMEDATALEN - 1). A longer one would be silently cut short.
+    private const MAX_IDENTIFIER_BYTES = 63;
+
     private Connection $m_connection; #  A connection resource to the PostgreSQL database.
     private string $m_migrationFolder; # The folder in which migration scripts are located.
+    private string $m_versionTableName; # The table the database's version is kept in.
+    private ?string $m_versionTableSchema; # The schema that table is in, or null for the default (public).
 
 
     /**
      * Creates the Migration object in preparation for migration.
+     *
      * @param string $migrationFolderPath - the path to the folder containing all the migration scripts. This may be
      * absolute or relative.
+     *
      * @param Connection $connection - the postgresql connection resource
-     * @throws Exception
+     *
+     * @param string $versionTableName - the table the database's version is kept in, which is created if it doesn't
+     * exist. Defaults to "migrations". A package with its own migrations should give a name of its own (e.g.
+     * "task_queue_migrations"), so its version doesn't clash with the application's.
+     *
+     * @param string|null $versionTableSchema - the schema that table is in, which is created if it doesn't exist.
+     * Defaults to null, which keeps it in the public schema, as before this option existed.
+     *
+     * @throws Exception - if the folder doesn't exist, or the table or schema name is empty or too long.
      */
-    public function __construct(string $migrationFolderPath, Connection $connection)
+    public function __construct(
+        string $migrationFolderPath,
+        Connection $connection,
+        string $versionTableName = self::MIGRATIONS_TABLE,
+        ?string $versionTableSchema = null
+    )
     {
         if (!is_dir($migrationFolderPath))
         {
             throw new Exception("A migration folder does not exist at: {$migrationFolderPath}");
         }
 
+        self::assertValidIdentifier($versionTableName, "version table name");
+
+        if ($versionTableSchema !== null)
+        {
+            self::assertValidIdentifier($versionTableSchema, "version table schema");
+        }
+
         $this->m_migrationFolder = $migrationFolderPath;
         $this->m_connection = $connection;
+        $this->m_versionTableName = $versionTableName;
+        $this->m_versionTableSchema = $versionTableSchema;
     }
 
 
@@ -224,7 +255,7 @@ class MigrationManager
      */
     private function insertDbVersion(int $version) : void
     {
-        $escapedTableName = pg_escape_identifier($this->m_connection, self::MIGRATIONS_TABLE);
+        $escapedTableName = $this->getEscapedMigrationTableName();
 
         // Postgresql does not have REPLACE, so just delete and insert in one transaction.
         $query =
@@ -251,9 +282,9 @@ class MigrationManager
     {
         $showTablesQuery =
             "SELECT table_name FROM information_schema.tables" .
-            " WHERE table_schema='public'" .
+            " WHERE table_schema=" . pg_escape_literal($this->m_connection, $this->m_versionTableSchema ?? 'public') .
             " AND table_type = 'BASE TABLE'" .
-            " AND table_name = " . pg_escape_literal($this->m_connection, self::MIGRATIONS_TABLE);
+            " AND table_name = " . pg_escape_literal($this->m_connection, $this->m_versionTableName);
 
         $result = pg_query($this->m_connection, $showTablesQuery);
 
@@ -297,6 +328,16 @@ class MigrationManager
      */
     private function createMigrationTable() : void
     {
+        if ($this->m_versionTableSchema !== null)
+        {
+            $escapedSchema = pg_escape_identifier($this->m_connection, $this->m_versionTableSchema);
+
+            if (pg_query($this->m_connection, "CREATE SCHEMA IF NOT EXISTS {$escapedSchema}") === false)
+            {
+                throw new Exception("Migration manager failed to create the {$this->m_versionTableSchema} schema");
+            }
+        }
+
         $createTableQuery =
             "CREATE TABLE {$this->getEscapedMigrationTableName()} (
                 id INT NOT NULL,
@@ -313,9 +354,34 @@ class MigrationManager
     }
 
 
+    /**
+     * Check that a name can be used as a PostgreSQL identifier, as given, rather than failing in a query later, or
+     * being silently cut short (and then matching a different name).
+     * @param string $name - the name.
+     * @param string $what - what it's the name of, for the message.
+     * @throws Exception - if it's empty, too long, or contains a NUL byte.
+     */
+    private static function assertValidIdentifier(string $name, string $what) : void
+    {
+        if ($name === '' || strlen($name) > self::MAX_IDENTIFIER_BYTES || str_contains($name, "\0"))
+        {
+            $max = self::MAX_IDENTIFIER_BYTES;
+            throw new Exception("The {$what} must be 1 to {$max} bytes long, with no NUL bytes, not \"{$name}\".");
+        }
+    }
+
+
     private function getEscapedMigrationTableName() : string
     {
-        return pg_escape_identifier($this->m_connection, self::MIGRATIONS_TABLE);
+        $escapedTable = pg_escape_identifier($this->m_connection, $this->m_versionTableName);
+
+        if ($this->m_versionTableSchema !== null)
+        {
+            $escapedSchema = pg_escape_identifier($this->m_connection, $this->m_versionTableSchema);
+            $escapedTable = "{$escapedSchema}.{$escapedTable}";
+        }
+
+        return $escapedTable;
     }
 }
 

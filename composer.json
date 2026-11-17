@@ -14,13 +14,18 @@
         }
     ],
     "require": {
-        "php": ">=8.2.0",
+        "php": "^8.2",
         "ext-pgsql": "*"
     },
     "autoload": {
         "psr-4": {
             "Programster\\PgsqlMigrations\\": "src/",
             "Programster\\PgsqlMigrations\\Exceptions\\": "src/exceptions"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Programster\\PgsqlMigrations\\Testing\\": "testing/"
         }
     }
 }
